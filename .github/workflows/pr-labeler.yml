@@ -1,0 +1,89 @@
+name: PR 자동 라벨링
+
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+jobs:
+  label:
+    runs-on: ubuntu-latest
+    steps:
+    - name: PR 자동 라벨링
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { data: pullRequest } = await github.rest.pulls.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number,
+          });
+
+          const { data: files } = await github.rest.pulls.listFiles({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number,
+          });
+
+          let labels = [];
+
+          // PR 제목 기반 라벨링
+          const title = pullRequest.title.toLowerCase();
+          if (title.includes('[feat]') || title.includes('feature')) {
+            labels.push('type/feature');
+          } else if (title.includes('[fix]') || title.includes('bug')) {
+            labels.push('type/bug');
+          } else if (title.includes('[docs]') || title.includes('documentation')) {
+            labels.push('type/documentation');
+          } else if (title.includes('[refactor]')) {
+            labels.push('type/enhancement');
+          }
+
+          // 변경된 파일 기반 라벨링
+          const changedFiles = files.map(file => file.filename);
+          
+          if (changedFiles.some(file => file.startsWith('backend/'))) {
+            labels.push('area/backend');
+          }
+          if (changedFiles.some(file => file.startsWith('frontend/'))) {
+            labels.push('area/frontend');
+          }
+          if (changedFiles.some(file => file.includes('test'))) {
+            labels.push('area/tests');
+          }
+          if (changedFiles.some(file => file.endsWith('.md'))) {
+            labels.push('type/documentation');
+          }
+          if (changedFiles.some(file => file.includes('.github/workflows'))) {
+            labels.push('area/ci-cd');
+          }
+
+          // 변경 크기 기반 라벨링
+          const totalChanges = pullRequest.additions + pullRequest.deletions;
+          if (totalChanges < 50) {
+            labels.push('size/small');
+          } else if (totalChanges < 200) {
+            labels.push('size/medium');
+          } else {
+            labels.push('size/large');
+          }
+
+          // 우선순위 라벨링 (긴급 키워드 기반)
+          if (title.includes('urgent') || title.includes('hotfix') || title.includes('critical')) {
+            labels.push('priority/high');
+          } else {
+            labels.push('priority/medium');
+          }
+
+          // 중복 제거
+          labels = [...new Set(labels)];
+
+          if (labels.length > 0) {
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              labels: labels
+            });
+
+            console.log(`라벨 추가 완료: ${labels.join(', ')}`);
+          }
