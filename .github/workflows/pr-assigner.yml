@@ -1,0 +1,46 @@
+name: PR 자동 할당
+
+on:
+  pull_request:
+    types: [opened, reopened]
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+    - name: PR 자동 할당
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const { data: pullRequest } = await github.rest.pulls.get({
+            owner: context.repo.owner,
+            repo: context.repo.repo,
+            pull_number: context.issue.number,
+          });
+
+          // 기본 리뷰어 목록 (실제 GitHub 사용자명으로 변경 필요)
+          const defaultReviewers = ['yozmngood']; // 실제 사용자명으로 변경
+          
+          // PR 작성자를 제외한 리뷰어 선택
+          const reviewers = defaultReviewers.filter(reviewer => reviewer !== pullRequest.user.login);
+          
+          if (reviewers.length > 0) {
+            // 리뷰어 할당
+            await github.rest.pulls.requestReviewers({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              reviewers: reviewers.slice(0, 2) // 최대 2명까지 할당
+            });
+
+            // PR 작성자를 담당자로 할당
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.issue.number,
+              assignees: [pullRequest.user.login]
+            });
+
+            console.log(`리뷰어 할당 완료: ${reviewers.join(', ')}`);
+            console.log(`담당자 할당 완료: ${pullRequest.user.login}`);
+          }

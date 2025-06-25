@@ -1,0 +1,117 @@
+name: 이슈 자동 할당
+
+on:
+  issues:
+    types: [opened, reopened]
+
+jobs:
+  assign:
+    runs-on: ubuntu-latest
+    steps:
+    - name: 이슈 자동 할당
+      uses: actions/github-script@v6
+      with:
+        script: |
+          const issue = context.payload.issue;
+          const title = issue.title.toLowerCase();
+          const body = issue.body ? issue.body.toLowerCase() : '';
+          
+          // 기본 담당자 목록 (실제 GitHub 사용자명으로 변경 필요)
+          const defaultAssignees = ['yozmngood']; // 실제 사용자명으로 변경
+          
+          let assignees = [defaultAssignees[0]]; // 기본 할당
+          
+          // 이슈 내용 기반 담당자 결정
+          if (title.includes('backend') || body.includes('api') || body.includes('서버')) {
+            assignees = defaultAssignees;
+          } else if (title.includes('frontend') || title.includes('ui') || title.includes('화면')) {
+            assignees = defaultAssignees;
+          } else if (title.includes('bug') || title.includes('버그')) {
+            if (title.includes('critical') || title.includes('urgent') || title.includes('긴급')) {
+              assignees = defaultAssignees;
+            }
+          }
+
+          // 자동 라벨링
+          let labels = [];
+
+          // 이슈 타입 기반 라벨링
+          if (title.includes('[bug]') || title.includes('bug') || title.includes('버그') || title.includes('오류')) {
+            labels.push('type/bug');
+          } else if (title.includes('[feat]') || title.includes('feature') || title.includes('기능')) {
+            labels.push('type/feature');
+          } else if (title.includes('[docs]') || title.includes('documentation') || title.includes('문서')) {
+            labels.push('type/documentation');
+          } else if (title.includes('[question]') || title.includes('help') || title.includes('질문')) {
+            labels.push('type/question');
+          }
+
+          // 우선순위 라벨링
+          if (title.includes('urgent') || title.includes('critical') || title.includes('긴급')) {
+            labels.push('priority/high');
+          } else if (title.includes('minor') || title.includes('사소한')) {
+            labels.push('priority/low');
+          } else {
+            labels.push('priority/medium');
+          }
+
+          // 영역 기반 라벨링
+          if (title.includes('backend') || body.includes('api') || body.includes('서버')) {
+            labels.push('area/backend');
+          }
+          if (title.includes('frontend') || body.includes('ui') || body.includes('화면')) {
+            labels.push('area/frontend');
+          }
+          if (title.includes('test') || body.includes('테스트')) {
+            labels.push('area/tests');
+          }
+
+          // 중복 제거
+          assignees = [...new Set(assignees)];
+          labels = [...new Set(labels)];
+
+          // 라벨 추가
+          if (labels.length > 0) {
+            await github.rest.issues.addLabels({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              labels: labels
+            });
+          }
+
+          if (assignees.length > 0) {
+            await github.rest.issues.addAssignees({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              assignees: assignees
+            });
+
+            let commentLines = [
+              "🎯 **자동 처리가 완료되었습니다**",
+              "",
+              `**할당된 담당자**: ${assignees.map(a => `@${a}`).join(', ')}`
+            ];
+            
+            if (labels.length > 0) {
+              commentLines.push("");
+              commentLines.push(`**적용된 라벨**: ${labels.map(l => `\`${l}\``).join(', ')}`);
+            }
+            
+            commentLines.push("");
+            commentLines.push("담당자분들께서 곧 이슈를 확인하고 처리할 예정입니다.");
+            commentLines.push("추가 정보가 필요한 경우 댓글로 요청드리겠습니다.");
+            commentLines.push("");
+            commentLines.push("---");
+            commentLines.push("*🤖 자동 할당 및 라벨링 시스템*");
+            
+            const assignmentComment = commentLines.join('\n');
+
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              body: assignmentComment
+            });
+          }
